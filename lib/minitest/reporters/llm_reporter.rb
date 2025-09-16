@@ -108,10 +108,13 @@ module Minitest
       private
 
       def default_options
+        format_env = ENV['LLM_REPORTER_FORMAT']&.downcase
+        format = format_env == 'verbose' ? :verbose : :compact
+
         {
           results_file: ENV.fetch('LLM_REPORTER_RESULTS', 'tmp/test_results.json'),
           report_file: ENV.fetch('LLM_REPORTER_TOML', 'tmp/test_report.toml'),
-          format: :compact,
+          format: format,
           track_regressions: true,
           write_reports: true
         }

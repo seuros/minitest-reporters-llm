@@ -92,7 +92,78 @@ class LlmReporterIntegrationTest < Minitest::Test
     assert_includes contents, 'failures = 1'
   end
 
+  def test_format_environment_variable_compact
+    with_env('LLM_REPORTER_FORMAT' => 'compact') do
+      reporter = Minitest::Reporters::LLMReporter.new(
+        results_file: @results_file,
+        report_file: @toml_file
+      )
+      assert_equal :compact, reporter.instance_variable_get(:@options)[:format]
+    end
+  end
+
+  def test_format_environment_variable_verbose
+    with_env('LLM_REPORTER_FORMAT' => 'verbose') do
+      reporter = Minitest::Reporters::LLMReporter.new(
+        results_file: @results_file,
+        report_file: @toml_file
+      )
+      assert_equal :verbose, reporter.instance_variable_get(:@options)[:format]
+    end
+  end
+
+  def test_format_environment_variable_case_insensitive
+    with_env('LLM_REPORTER_FORMAT' => 'VERBOSE') do
+      reporter = Minitest::Reporters::LLMReporter.new(
+        results_file: @results_file,
+        report_file: @toml_file
+      )
+      assert_equal :verbose, reporter.instance_variable_get(:@options)[:format]
+    end
+  end
+
+  def test_format_environment_variable_invalid_defaults_to_compact
+    with_env('LLM_REPORTER_FORMAT' => 'invalid') do
+      reporter = Minitest::Reporters::LLMReporter.new(
+        results_file: @results_file,
+        report_file: @toml_file
+      )
+      assert_equal :compact, reporter.instance_variable_get(:@options)[:format]
+    end
+  end
+
+  def test_format_environment_variable_not_set_defaults_to_compact
+    with_env('LLM_REPORTER_FORMAT' => nil) do
+      reporter = Minitest::Reporters::LLMReporter.new(
+        results_file: @results_file,
+        report_file: @toml_file
+      )
+      assert_equal :compact, reporter.instance_variable_get(:@options)[:format]
+    end
+  end
+
   private
+
+  def with_env(env_vars)
+    old_values = {}
+    env_vars.each do |key, value|
+      old_values[key] = ENV.fetch(key, nil)
+      if value.nil?
+        ENV.delete(key)
+      else
+        ENV[key] = value
+      end
+    end
+    yield
+  ensure
+    old_values.each do |key, value|
+      if value.nil?
+        ENV.delete(key)
+      else
+        ENV[key] = value
+      end
+    end
+  end
 
   def ensure_clean_results_file
     FileUtils.rm_f(@results_file)
