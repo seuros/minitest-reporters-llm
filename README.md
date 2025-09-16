@@ -81,6 +81,9 @@ FAIL test_validation_fails
 # Override default file paths
 export LLM_REPORTER_RESULTS="custom/results.json"
 export LLM_REPORTER_TOML="custom/report.toml"
+
+# Override default format
+export LLM_REPORTER_FORMAT="verbose"  # or "compact" (default)
 ```
 
 ### Regression Tracking

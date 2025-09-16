@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    minitest-reporters-llm (0.1.0)
+    minitest-reporters-llm (0.2.0)
       minitest (>= 5.25)
       minitest-reporters (>= 1.7.1)
 
