@@ -107,7 +107,7 @@ To install this gem onto your local machine, run `bundle exec rake install`. To 
 - **Dual output modes**: Compact for LLMs, verbose for humans
 - **Configurable file paths**: No hardcoded temporary directories
 - **TOML/JSON reports**: Structured data export for further analysis
-- **Zero dependencies**: Only requires minitest-reporters
+- **Minimal dependencies**: Built on minitest and minitest-reporters
 
 ## Why Use This Reporter?
 
