@@ -11,6 +11,9 @@ module Minitest
 
       def initialize(options = {})
         super
+        custom_io = options.delete(:io)
+        @io = custom_io if custom_io
+
         @options = default_options.merge(options)
         @results_file = @options[:results_file]
         @report_file = @options[:report_file]
@@ -26,8 +29,19 @@ module Minitest
 
       def record(result)
         super
+        status =
+          if result.skipped?
+            'skip'
+          elsif result.error?
+            'error'
+          elsif result.passed?
+            'pass'
+          else
+            'fail'
+          end
+
         test_key = "#{result.klass}##{result.name}"
-        @current_results[test_key] = result.passed? ? 'pass' : 'fail'
+        @current_results[test_key] = status
       end
 
       def report
@@ -195,7 +209,7 @@ module Minitest
       end
 
       def show_failure_details
-        failed_tests = tests_list.select { |t| t.failure && !t.skipped? }
+        failed_tests = tests_list.select { |t| t.failure && !t.skipped? && !t.error? }
         error_tests = tests_list.select { |t| t.failure && t.error? }
 
         return unless failed_tests.any? || error_tests.any?
@@ -260,10 +274,11 @@ module Minitest
 
         @current_results.each do |test_key, status|
           previous_status = @previous_results[test_key]
+          next unless previous_status
 
-          if previous_status == 'pass' && status == 'fail'
+          if previous_status == 'pass' && %w[fail error].include?(status)
             new_failures << test_key_to_location(test_key)
-          elsif previous_status == 'fail' && status == 'pass'
+          elsif %w[fail error skip].include?(previous_status) && status == 'pass'
             fixes << test_key_to_location(test_key)
           end
         end
@@ -280,8 +295,10 @@ module Minitest
 
         @current_results.each do |test_key, status|
           previous_status = @previous_results[test_key]
-          new_failures += 1 if previous_status == 'pass' && status == 'fail'
-          fixes += 1 if previous_status == 'fail' && status == 'pass'
+          next unless previous_status
+
+          new_failures += 1 if previous_status == 'pass' && %w[fail error].include?(status)
+          fixes += 1 if %w[fail error skip].include?(previous_status) && status == 'pass'
         end
 
         puts "REG +#{new_failures} -#{fixes}" if new_failures.positive? || fixes.positive?
@@ -327,8 +344,10 @@ module Minitest
           fixes = []
           @current_results.each do |k, status|
             prev = @previous_results[k]
-            new_failures << test_key_to_location(k) if prev == 'pass' && status == 'fail'
-            fixes << test_key_to_location(k) if prev == 'fail' && status == 'pass'
+            next unless prev
+
+            new_failures << test_key_to_location(k) if prev == 'pass' && %w[fail error].include?(status)
+            fixes << test_key_to_location(k) if %w[fail error skip].include?(prev) && status == 'pass'
           end
           data[:regressions] = { new_failures: new_failures, fixes: fixes }
         end
@@ -361,8 +380,13 @@ module Minitest
             key = k.to_s
             case v
             when Array
-              escaped = v.map { |s| s.to_s.gsub('\\', '\\\\').gsub('"', '\\"') }
-              lines << "#{key} = [\"#{escaped.join('\", \"')}\"]"
+              if v.empty?
+                lines << "#{key} = []"
+              else
+                escaped = v.map { |s| s.to_s.gsub('\\', '\\\\').gsub('"', '\\"') }
+                joined = escaped.join('", "')
+                lines << "#{key} = [\"#{joined}\"]"
+              end
             when String
               val = v.to_s.gsub('\\', '\\\\').gsub('"', '\\"')
               lines << "#{key} = \"#{val}\""

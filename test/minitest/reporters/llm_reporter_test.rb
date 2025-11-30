@@ -5,21 +5,32 @@ require 'stringio'
 
 class LlmReporterIntegrationTest < Minitest::Test
   FakeFailure = Struct.new(:message)
-  FakeResult = Struct.new(:klass, :name, :failure) do
+  class FakeResult
+    attr_reader :klass, :name, :failure
+
+    def initialize(klass:, name:, failure: nil, skipped: false, errored: false, location: [__FILE__, 1])
+      @klass = klass
+      @name = name
+      @failure = failure
+      @skipped = skipped
+      @errored = errored
+      @location = location
+    end
+
     def passed?
-      failure.nil?
+      !@skipped && !@errored && failure.nil?
     end
 
     def skipped?
-      false
+      @skipped
     end
 
     def error?
-      false
+      @errored
     end
 
     def source_location
-      [__FILE__, 1]
+      @location
     end
 
     def assertions
@@ -44,11 +55,12 @@ class LlmReporterIntegrationTest < Minitest::Test
   def test_records_and_saves_results
     reporter = Minitest::Reporters::LLMReporter.new(
       results_file: @results_file,
-      report_file: @toml_file
+      report_file: @toml_file,
+      io: StringIO.new
     )
 
-    pass = FakeResult.new('SampleTest', 'test_ok', nil)
-    fail = FakeResult.new('SampleTest', 'test_bad', FakeFailure.new('boom'))
+    pass = FakeResult.new(klass: 'SampleTest', name: 'test_ok')
+    fail = FakeResult.new(klass: 'SampleTest', name: 'test_bad', failure: FakeFailure.new('boom'))
 
     reporter.record(pass)
     reporter.record(fail)
@@ -64,9 +76,10 @@ class LlmReporterIntegrationTest < Minitest::Test
   def test_compact_location_formatting
     reporter = Minitest::Reporters::LLMReporter.new(
       results_file: @results_file,
-      report_file: @toml_file
+      report_file: @toml_file,
+      io: StringIO.new
     )
-    res = FakeResult.new('SampleTest', 'test_the_title_renders', nil)
+    res = FakeResult.new(klass: 'SampleTest', name: 'test_the_title_renders')
     formatted = reporter.send(:format_test_location, res)
     assert_match(/the title renders@.+:\d+/, formatted)
   end
@@ -74,11 +87,12 @@ class LlmReporterIntegrationTest < Minitest::Test
   def test_writes_toml_summary
     reporter = Minitest::Reporters::LLMReporter.new(
       results_file: @results_file,
-      report_file: @toml_file
+      report_file: @toml_file,
+      io: StringIO.new
     )
     reporter.start # initialize timing
-    pass = FakeResult.new('SampleTest', 'test_ok', nil)
-    fail = FakeResult.new('SampleTest', 'test_bad', FakeFailure.new('boom'))
+    pass = FakeResult.new(klass: 'SampleTest', name: 'test_ok')
+    fail = FakeResult.new(klass: 'SampleTest', name: 'test_bad', failure: FakeFailure.new('boom'))
 
     reporter.record(pass)
     reporter.record(fail)
@@ -92,11 +106,95 @@ class LlmReporterIntegrationTest < Minitest::Test
     assert_includes contents, 'failures = 1'
   end
 
+  def test_records_all_statuses
+    reporter = Minitest::Reporters::LLMReporter.new(
+      results_file: @results_file,
+      report_file: @toml_file,
+      io: StringIO.new
+    )
+
+    pass = FakeResult.new(klass: 'SampleTest', name: 'test_ok')
+    skip = FakeResult.new(klass: 'SampleTest', name: 'test_skip', skipped: true, failure: FakeFailure.new('skip'))
+    error = FakeResult.new(klass: 'SampleTest', name: 'test_error', errored: true, failure: FakeFailure.new('boom'))
+
+    reporter.record(pass)
+    reporter.record(skip)
+    reporter.record(error)
+
+    reporter.send(:save_current_results)
+
+    stored = JSON.parse(File.read(@results_file))
+    assert_equal 'pass', stored['SampleTest#test_ok']
+    assert_equal 'skip', stored['SampleTest#test_skip']
+    assert_equal 'error', stored['SampleTest#test_error']
+  end
+
+  def test_regression_tracking_counts_errors_and_fixes
+    io = StringIO.new
+    reporter = Minitest::Reporters::LLMReporter.new(
+      results_file: @results_file,
+      report_file: @toml_file,
+      io: io
+    )
+
+    reporter.instance_variable_set(:@previous_results, {
+                                  'SampleTest#test_ok' => 'pass',
+                                  'SampleTest#test_fix' => 'fail',
+                                  'SampleTest#test_skip' => 'skip'
+                                })
+
+    reporter.instance_variable_set(:@current_results, {
+                                  'SampleTest#test_ok' => 'error',
+                                  'SampleTest#test_fix' => 'pass',
+                                  'SampleTest#test_skip' => 'pass'
+                                })
+
+    reporter.send(:show_regressions_compact)
+    assert_includes io.string, 'REG +1 -2'
+  end
+
+  def test_toml_arrays_are_valid
+    reporter = Minitest::Reporters::LLMReporter.new(
+      results_file: @results_file,
+      report_file: @toml_file,
+      io: StringIO.new
+    )
+
+    toml = reporter.send(
+      :build_toml,
+      details: { failed: %w[foo bar], errors: [], skipped: [] }
+    )
+
+    assert_includes toml, 'failed = ["foo", "bar"]'
+    assert_includes toml, 'errors = []'
+  end
+
+  def test_errors_not_duplicated_in_details
+    io = StringIO.new
+    reporter = Minitest::Reporters::LLMReporter.new(
+      results_file: @results_file,
+      report_file: @toml_file,
+      format: :verbose,
+      io: io
+    )
+
+    reporter.start
+    error = FakeResult.new(klass: 'SampleTest', name: 'test_boom', errored: true, failure: FakeFailure.new('boom'))
+    reporter.record(error)
+
+    reporter.report
+
+    refute_includes io.string, '❌ test_boom'
+    assert_includes io.string, '💥 1:'
+    assert_includes io.string, '💥 test_boom'
+  end
+
   def test_format_environment_variable_compact
     with_env('LLM_REPORTER_FORMAT' => 'compact') do
       reporter = Minitest::Reporters::LLMReporter.new(
         results_file: @results_file,
-        report_file: @toml_file
+        report_file: @toml_file,
+        io: StringIO.new
       )
       assert_equal :compact, reporter.instance_variable_get(:@options)[:format]
     end
@@ -106,7 +204,8 @@ class LlmReporterIntegrationTest < Minitest::Test
     with_env('LLM_REPORTER_FORMAT' => 'verbose') do
       reporter = Minitest::Reporters::LLMReporter.new(
         results_file: @results_file,
-        report_file: @toml_file
+        report_file: @toml_file,
+        io: StringIO.new
       )
       assert_equal :verbose, reporter.instance_variable_get(:@options)[:format]
     end
@@ -116,7 +215,8 @@ class LlmReporterIntegrationTest < Minitest::Test
     with_env('LLM_REPORTER_FORMAT' => 'VERBOSE') do
       reporter = Minitest::Reporters::LLMReporter.new(
         results_file: @results_file,
-        report_file: @toml_file
+        report_file: @toml_file,
+        io: StringIO.new
       )
       assert_equal :verbose, reporter.instance_variable_get(:@options)[:format]
     end
@@ -126,7 +226,8 @@ class LlmReporterIntegrationTest < Minitest::Test
     with_env('LLM_REPORTER_FORMAT' => 'invalid') do
       reporter = Minitest::Reporters::LLMReporter.new(
         results_file: @results_file,
-        report_file: @toml_file
+        report_file: @toml_file,
+        io: StringIO.new
       )
       assert_equal :compact, reporter.instance_variable_get(:@options)[:format]
     end
