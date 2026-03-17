@@ -62,21 +62,21 @@ module Minitest
       end
 
       def report_compact(total, passes, fails_ct, errors_ct, skips_ct)
-        puts "R t#{total} d#{format_time(llm_total_time)} p#{passes} f#{fails_ct} e#{errors_ct} s#{skips_ct}"
+        puts "#{total} tests,#{passes} passed,#{fails_ct} failures,#{errors_ct} errors,#{skips_ct} skips #{format_time(llm_total_time)}"
 
         show_regressions_compact
 
         # Show failures
         if fails_ct.positive?
           tests_list.select { |t| t.failure && !t.skipped? && !t.error? }.each do |test|
-            puts "F #{format_test_location_compact(test)}"
+            puts "FAIL #{format_test_location_compact(test)}"
           end
         end
 
         # Show errors
         if errors_ct.positive?
           tests_list.select { |t| t.failure && t.error? }.each do |test|
-            puts "E #{format_test_location_compact(test)}"
+            puts "ERROR #{format_test_location_compact(test)}"
           end
         end
 
@@ -84,7 +84,7 @@ module Minitest
         return unless skips_ct.positive?
 
         tests_list.select(&:skipped?).each do |test|
-          puts "S #{format_test_location_compact(test)}"
+          puts "SKIP #{format_test_location_compact(test)}"
         end
       end
 
@@ -301,7 +301,7 @@ module Minitest
           fixes += 1 if %w[fail error skip].include?(previous_status) && status == 'pass'
         end
 
-        puts "REG +#{new_failures} -#{fixes}" if new_failures.positive? || fixes.positive?
+        puts "reg: #{new_failures} new,#{fixes} fixed" if new_failures.positive? || fixes.positive?
       end
 
       def test_key_to_location(test_key)

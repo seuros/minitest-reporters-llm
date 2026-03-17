@@ -150,7 +150,7 @@ class LlmReporterIntegrationTest < Minitest::Test
                                 })
 
     reporter.send(:show_regressions_compact)
-    assert_includes io.string, 'REG +1 -2'
+    assert_includes io.string, 'reg: 1 new,2 fixed'
   end
 
   def test_toml_arrays_are_valid

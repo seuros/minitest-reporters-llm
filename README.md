@@ -45,16 +45,15 @@ Minitest::Reporters.use! [
 
 #### Compact Mode (Optimized for LLMs)
 ```
-R t15 d2.3s p12 f2 e1 s0
-REG +1 -0
-F user_test.rb:45 validation fails
-E api_test.rb:12 connection timeout
+15 tests,12 passed,2 failures,1 error,0 skips 2.3s
+reg: 1 new,0 fixed
+FAIL user_test.rb:45 validation fails
+ERROR api_test.rb:12 connection timeout
 ```
 
-Format: `R t{total} d{duration} p{pass} f{fail} e{error} s{skip}`
-- `R` = Result summary line
-- `F/E/S` = Individual failure/error/skip lines
-- `REG +X -Y` = Regression summary (X new failures, Y fixes)
+- Summary line: `{total} tests,{passed} passed,{failures} failures,{errors} errors,{skips} skips {duration}`
+- `FAIL/ERROR/SKIP` = Individual failure/error/skip lines
+- `reg: X new,Y fixed` = Regression summary (X new failures, Y fixes)
 
 #### Verbose Mode (Human-friendly)
 ```
